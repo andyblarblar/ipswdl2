@@ -1,7 +1,9 @@
-use reqwest::*;
-use crate::apiJsonTypes::*;
-use futures::Stream;
+//! Provides a client to access the IPSW.me API.
 use bytes::Bytes;
+use futures::Stream;
+use reqwest::*;
+
+use crate::api_json_types::*;
 
 /// Client to access the ipsw.me API.
 pub struct Client {
@@ -10,8 +12,7 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Self {
-        //Following redirects breaks apple api, so follow none
-        let internal = ClientBuilder::new().redirect(redirect::Policy::none()).build().unwrap();
+        let internal = ClientBuilder::new().build().unwrap();
 
         Client { internal }
     }
@@ -46,15 +47,15 @@ impl Client {
     /// Begins to download the ipsw file referenced by this firmware.
     ///
     /// # Returns
-    /// * Ok(stream) - The ipsw file being downloaded as an async byte stream.
+    /// * Ok(stream, dl_size) - The ipsw file being downloaded as an async byte stream, and the length in bytes of that stream.
     /// * Err - Errored when hitting Apples API. This can happen for old ipsw files.
-    pub async fn download_ipsw(&self, fw: &Firmware) -> Result<impl Stream<Item = Result<Bytes>>> {
+    pub async fn download_ipsw(&self, fw: &Firmware) -> Result<(impl Stream<Item = Result<Bytes>>, u64)> {
         let response = self.internal.get(format!("https://api.ipsw.me/v4/ipsw/download/{}/{}", fw.identifier, fw.buildid)).send().await?;
-        let url_to_download = response.headers().get("location").expect("No location header found"); //Extract the link to apples site, as we have redirects off
 
-        let response = self.internal.get(url_to_download.to_str().expect("Bad location header")).send().await?;
+        //TODO check for non-200 code
 
-        Ok(response.bytes_stream())
+        let len = response.content_length().unwrap();
+        Ok((response.bytes_stream(), len))
     }
 }
 
