@@ -3,3 +3,7 @@
 members = [
     "ipswdl2"
 ]
+
+[profile.release]
+lto = true
+incremental = true

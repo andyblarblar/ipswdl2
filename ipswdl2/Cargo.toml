@@ -3,6 +3,13 @@ name = "ipswdl2"
 version = "0.1.0"
 authors = ["Andrew Ealovega <Andrew@Ealovega.dev>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
+description = "Downloads Apple's IPhone SoftWare (IPSW) files."
+homepage = "https://github.com/andyblarblar/ipswdl2"
+repository = "https://github.com/andyblarblar/ipswdl2"
+categories = ["Command line utilities"]
+keywords = ["ipsw"]
+readme = "../readme.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +19,7 @@ serde = {version = "1.0.126", features = ["derive"]}
 serde_json = "1.0.64"
 reqwest = { version = "0.11.3", features = ["json", "stream"]}
 futures = "0.3.15"
-tokio = { version = "1.6.0", features = ["full", "macros"]}
+tokio = { version = "1.6.0", features = ["rt-multi-thread", "macros"]}
 bytes = "1.0.1"
 chrono = {version = "0.4.19", features = ["serde"]}
 ctrlc = "3.1.9"

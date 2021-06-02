@@ -33,7 +33,7 @@ pub struct CliOpts {
     #[structopt(short, long, required_unless("download-all"), required_unless("list-device-names"))]
     filter_term: Option<String>,
 
-    /// Directory to create log files in. Will not log if not set.
+    /// Filename to log to. Will not log if not set.
     #[structopt(short, long)]
     log_path: Option<PathBuf>,
 
