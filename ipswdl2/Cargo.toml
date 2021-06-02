@@ -9,9 +9,7 @@ homepage = "https://github.com/andyblarblar/ipswdl2"
 repository = "https://github.com/andyblarblar/ipswdl2"
 categories = ["Command line utilities"]
 keywords = ["ipsw"]
-readme = "../readme.md"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+readme = "../README.md"
 
 [dependencies]
 structopt = "0.3.21"

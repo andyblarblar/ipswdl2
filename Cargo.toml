@@ -6,4 +6,3 @@ members = [
 
 [profile.release]
 lto = true
-incremental = true
