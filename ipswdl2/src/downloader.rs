@@ -1,15 +1,17 @@
+//! Logic for downloading files.
 use std::error::Error;
 use std::fs::*;
-use std::io::{Write};
+use std::io::Write;
 
 use chrono::*;
-use indicatif::{ProgressStyle};
+use indicatif::ProgressStyle;
 use log::{debug, error, info};
 use tokio::sync::watch;
 use tokio::sync::watch::Receiver;
 
-use crate::{Client, CliOpts};
 use crate::api_json_types::{Device, FirmwareListing};
+use crate::{CliOpts, Client};
+use colored::Colorize;
 
 pub struct Downloader {
     /// Client to access IPSW API.
@@ -28,17 +30,19 @@ pub struct Downloader {
     ctrlc_received: Receiver<bool>,
     /// `true` if program should abort when the next download starts.
     /// Currently only used for the ctlc handle, but could also be used to make an error fatal.
-    kill_program: bool
+    kill_program: bool,
 }
 
-/// True if there is a downloader instance currently in use in any scope.
+/// True if there is a downloader instance currently alive in any scope.
 static mut DOWNLOADER_CREATED: bool = false;
 
 impl Downloader {
-
     /// Creates a new downloader.
+    ///
+    /// # panics
+    ///
+    /// This panics if more than one downloader is alive at the same time, due to multi binding ctrl-c handlers.
     pub fn new(client: Client, devices: Vec<Device>, opt: CliOpts) -> Self {
-
         //Ensure downloader is singleton
         unsafe {
             if DOWNLOADER_CREATED {
@@ -50,10 +54,11 @@ impl Downloader {
         //bind ctrlc to a channel
         let (ctrlc_tx, ctrlc_rx) = watch::channel(false);
         ctrlc::set_handler(move || {
-            println!("ctrlc received, exiting...");
+            println!("{}", "ctrlc received, exiting...".on_bright_red());
             error!("Killed by ctrlc");
             ctrlc_tx.send(true).unwrap();
-        }).expect("Failed to make the ctrlc handle");
+        })
+        .expect("Failed to make the ctrlc handle");
 
         Downloader {
             client,
@@ -63,48 +68,60 @@ impl Downloader {
             start_time: Local::now(),
             total_done: 0,
             ctrlc_received: ctrlc_rx,
-            kill_program: false
+            kill_program: false,
         }
     }
 
+    /// Begins to download ipsw files using the configured Downloader.
     pub async fn begin(mut self) {
         //If filter is set
         if let Some(filter) = self.opt.filter_term.take() {
             debug!("using filter: {}", filter);
+
+            //Update total with filter
+            {
+                let filtered_total_devices = self
+                    .devices
+                    .iter()
+                    .filter(|d| d.name.contains(&filter))
+                    .count();
+                self.total_todo = filtered_total_devices as u32;
+            }
 
             //Download each device that matches filter
             for device in std::mem::take(&mut self.devices)
                 .into_iter()
                 .filter(|d| d.name.contains(&filter))
             {
-                //Return early if told to die
-                if self.kill_program {
-                    return
-                }
 
                 let fw = self.client.get_device_firmware(&device).await;
 
                 match fw {
                     Ok(fw) => self.download_firmware(fw).await,
                     Err(why) => Self::report_err(why, &device.name),
+                }
+
+                //Return early if told to die
+                if self.kill_program {
+                    return;
                 }
 
                 self.after_fw_download(&device);
             }
         } else {
             //Download all
-            for device in std::mem::take(&mut self.devices)
-            {
-                //Return early if told to die
-                if self.kill_program {
-                    return
-                }
+            for device in std::mem::take(&mut self.devices) {
 
                 let fw = self.client.get_device_firmware(&device).await;
 
                 match fw {
                     Ok(fw) => self.download_firmware(fw).await,
                     Err(why) => Self::report_err(why, &device.name),
+                }
+
+                //Return early if told to die
+                if self.kill_program {
+                    return;
                 }
 
                 self.after_fw_download(&device);
@@ -132,7 +149,10 @@ impl Downloader {
     /// left in the destination folder.
     async fn download_firmware(&mut self, fw: FirmwareListing) {
         if fw.firmwares.is_empty() {
-            println!("{} has no firmware for download", fw.name);
+            println!(
+                "{}",
+                format!("{} has no firmware for download", fw.name).cyan()
+            );
             info!("{} has no firmware for download", fw.name);
             return;
         }
@@ -147,7 +167,10 @@ impl Downloader {
 
         //Skip download if file is already downloaded
         if file_path.exists() {
-            println!("{} is already downloaded, skipping", fw.name);
+            println!(
+                "{}",
+                format!("{} is already downloaded, skipping", fw.name).dimmed()
+            );
             info!("{} is already downloaded", fw.name);
             return;
         }
@@ -158,13 +181,20 @@ impl Downloader {
                 dir.filter_map(|e| e.ok())
                     .for_each(|e| match remove_file(e.path()) {
                         Ok(_) => {
-                            println!("deleted old file {}", e.file_name().to_str().unwrap());
+                            println!(
+                                "deleted old file {}",
+                                e.file_name().to_str().unwrap().purple().dimmed()
+                            );
                             info!("deleted old file {}", e.file_name().to_str().unwrap());
                         }
                         Err(why) => {
                             println!(
-                                "failed to delete old file {}",
-                                e.file_name().to_str().unwrap()
+                                "{}",
+                                format!(
+                                    "failed to delete old file {}",
+                                    e.file_name().to_str().unwrap()
+                                )
+                                .red()
                             );
                             error!(
                                 "failed to delete old file {} because: {}",
@@ -176,9 +206,8 @@ impl Downloader {
             }
         }
 
-        println!(
-            "Beginning to download {} {}...",
-            fw.name, fw.firmwares[0].version
+        println!("{}",
+            format!("Beginning to download {} {}...", fw.name, fw.firmwares[0].version).bold()
         );
         info!("downloading {} {}", fw.name, fw.firmwares[0].version);
 
@@ -194,8 +223,12 @@ impl Downloader {
         let dl_stream = self.client.download_ipsw(&fw.firmwares[0]).await;
         if dl_stream.is_err() {
             println!(
-                "Downloading {} {} errored on Apples API. Skipping download...",
-                fw.name, fw.firmwares[0].identifier
+                "{}",
+                format!(
+                    "Downloading {} {} errored on Apples API. Skipping download...",
+                    fw.name, fw.firmwares[0].identifier
+                )
+                .red()
             );
             error!(
                 "Downloading {} {} errored on Apples API",
@@ -224,7 +257,9 @@ impl Downloader {
                         match byte {
                             Ok(_) => {}
                             Err(_) => {
-                                println!("Error writing file: {} skipping download...", file_path.to_str().unwrap());
+                                println!("{}",
+                                    format!("Error writing file: {} skipping download...", file_path.to_str().unwrap()).red()
+                                );
                                 error!("Error writing file: {}", file_path.to_str().unwrap());
                             }
                         }
@@ -236,7 +271,9 @@ impl Downloader {
                         match temp_file_stream.write_all(byte.as_ref()) {
                             Ok(_) => {}
                             Err(_) => {
-                                println!("Error writing file: {} skipping download...", file_path.to_str().unwrap());
+                                println!("{}",
+                                    format!("Could not create file: {} skipping download...",file_path.to_str().unwrap()).red()
+                                );
                                 error!("Error writing file: {}", file_path.to_str().unwrap());
                             }
                         }
@@ -247,10 +284,8 @@ impl Downloader {
                         let file_stream = File::create(&file_path);
 
                         if file_stream.is_err() || dir_creation_result.is_err() {
-                            println!(
-                                "Could not create file: {} skipping download... {}",
-                                file_path.to_str().unwrap(),
-                                file_stream.unwrap_err()
+                            println!("{}",
+                                format!("Could not create file: {} skipping download...",file_path.to_str().unwrap()).red()
                             );
                             error!("Could not create file: {}", file_path.to_str().unwrap());
                             return;
@@ -263,10 +298,8 @@ impl Downloader {
                         debug!("Copying from temp file to end file");
                         match std::io::copy(&mut std::io::BufReader::new(temp_file_read), &mut end_file_stream) {
                             Err(why) => {
-                                println!(
-                                    "Could not create file: {} skipping download... {}",
-                                    file_path.to_str().unwrap(),
-                                    why
+                                println!("{}",
+                                    format!("Could not create file: {} skipping download... {}",file_path.to_str().unwrap(),why).red()
                                 );
                                 error!("Could not copy temp to file: {} err: {}", file_path.to_str().unwrap(), why);
                                 return;
@@ -293,16 +326,28 @@ impl Downloader {
         error!("Getting device firmware errored: {}", err);
 
         println!(
-            "Process errored when downloading firmware for {}. Description: {}",
-            device, err
+            "{}",
+            format!(
+                "Process errored when downloading firmware for {}. Description: {}",
+                device, err
+            )
+            .red()
         )
     }
 
     /// Performs tasks after a failed or successful download. total done increment, progress bar ect.
     fn after_fw_download(&mut self, device: &Device) {
         self.total_done += 1;
-        println!("Ended work on: {} ({}/{})", device.name, self.total_done, self.total_todo);
-        //TODO add color
+
+        let done_str = format!(
+            "{}{}/{}{}",
+            "(".bold().italic(),
+            self.total_done.to_string().cyan().italic(),
+            self.total_todo.to_string().cyan().italic(),
+            ")".bold().italic(),
+        );
+
+        println!("Ended work on: {} {}", device.name, done_str);
     }
 }
 

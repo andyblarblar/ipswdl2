@@ -2,10 +2,9 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use log::{debug, error, info, LevelFilter};
+use log::{info, LevelFilter};
 use simplelog::{Config, WriteLogger};
 use structopt::*;
-
 
 use crate::client::Client;
 use crate::downloader::Downloader;
@@ -54,7 +53,6 @@ async fn main() {
 
     let client = Client::new();
 
-    info!("Beginning program");
     println!("Getting Devices...");
 
     let devices = client.get_all_devices().await.expect("Cannot hit API!");
