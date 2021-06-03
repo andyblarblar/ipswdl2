@@ -130,11 +130,11 @@ impl Downloader {
 
         println!(
             "Finished in {} minutes.",
-            (self.start_time - Local::now()).num_minutes()
+            (Local::now() - self.start_time).num_minutes()
         );
         info!(
             "Finished in {} minutes.",
-            (self.start_time - Local::now()).num_minutes()
+            (Local::now() - self.start_time).num_minutes()
         )
     }
 
@@ -158,12 +158,13 @@ impl Downloader {
         }
 
         //Path to file were fw will be
-        let file_path = self
+        let mut file_path = self
             .opt
             .download_path
-            .join(fw.name.clone())
-            .join(fw.identifier)
-            .with_extension("ipsw");
+            .join(fw.name.clone());
+            file_path.push(format!("{}.ipsw",fw.firmwares[0].version.clone()));//Needed to ensure all numbers in version are used in path
+        
+        debug!("Using path {:?}", file_path);
 
         //Skip download if file is already downloaded
         if file_path.exists() {
