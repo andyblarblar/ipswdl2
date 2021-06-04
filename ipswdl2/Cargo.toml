@@ -1,13 +1,13 @@
 [package]
 name = "ipswdl2"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Andrew Ealovega <Andrew@Ealovega.dev>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "Downloads Apple's IPhone SoftWare (IPSW) files."
 homepage = "https://github.com/andyblarblar/ipswdl2"
 repository = "https://github.com/andyblarblar/ipswdl2"
-categories = ["Command line utilities"]
+categories = ["command-line-utilities"]
 keywords = ["ipsw"]
 readme = "../README.md"
 
